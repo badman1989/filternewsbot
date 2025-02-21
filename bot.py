@@ -9,10 +9,10 @@ from telethon import TelegramClient, events
 # === BOT CONFIG ===
 import os
 
-API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-API_ID = os.getenv("TELEGRAM_API_ID")
-API_HASH = os.getenv("TELEGRAM_API_HASH")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+API_TOKEN = os.getenv("7542300451:AAGuMRnNwBgB3wBojfjAtVN5T4gJIFMWEFc")
+API_ID = os.getenv("22046638")
+API_HASH = os.getenv("c039255309530e542b97d46f3df4cf1f")
+CHAT_ID = os.getenv("-1002310511779")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -37,6 +37,11 @@ cursor.execute("""
         word TEXT UNIQUE
     )
 """)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS channels (
+        id INTEGER PRIMARY KEY
+    )
+""")
 db.commit()
 
 # === BLACKLIST FUNCTION ===
@@ -45,22 +50,53 @@ def is_blacklisted(text):
     blacklist_words = [row[0] for row in cursor.fetchall()]
     return any(word.lower() in text.lower() for word in blacklist_words)
 
+# === CHANNEL MANAGEMENT ===
+@dp.message_handler(commands=['add_channel'])
+async def add_channel(message: Message):
+    chat_id = message.get_args().strip()
+    if not chat_id.startswith('-100'):
+        await message.reply("Введите ID канала (начинается с -100).")
+        return
+
+    cursor.execute("INSERT OR IGNORE INTO channels (id) VALUES (?)", (int(chat_id),))
+    db.commit()
+    await message.reply(f"Канал {chat_id} добавлен в список.")
+
+@dp.message_handler(commands=['remove_channel'])
+async def remove_channel(message: Message):
+    chat_id = message.get_args().strip()
+    cursor.execute("DELETE FROM channels WHERE id = ?", (int(chat_id),))
+    db.commit()
+    await message.reply(f"Канал {chat_id} удалён из списка.")
+
+@dp.message_handler(commands=['list_channels'])
+async def list_channels(message: Message):
+    cursor.execute("SELECT id FROM channels")
+    channels = [row[0] for row in cursor.fetchall()]
+    if channels:
+        await message.reply("Мониторинг каналов:\n" + "\n".join(map(str, channels)))
+    else:
+        await message.reply("Список каналов пуст.")
+
 # === TELETHON EVENT HANDLER ===
-@client.on(events.NewMessage)
+cursor.execute("SELECT id FROM channels")
+CHANNELS = [row[0] for row in cursor.fetchall()]
+
+@client.on(events.NewMessage(chats=CHANNELS))
 async def news_handler(event):
     if event.is_channel:
         text = event.message.text or ""
         if is_blacklisted(text):
             return  # Ignore blacklisted content
-
+        
         cursor.execute("SELECT * FROM news WHERE text = ?", (text,))
         if cursor.fetchone():
             return  # Ignore duplicates
-
+        
         cursor.execute("INSERT INTO news (source, message_id, text) VALUES (?, ?, ?)",
                        (event.chat.title, event.message.id, text))
         db.commit()
-
+        
         await bot.send_message(CHAT_ID, f"📰 **{event.chat.title}**\n{text}")
 
 # === BOT COMMANDS ===
@@ -74,7 +110,7 @@ async def add_blacklist(message: Message):
     if not word:
         await message.reply("Введите слово для чёрного списка после команды.")
         return
-
+    
     cursor.execute("INSERT OR IGNORE INTO blacklist (word) VALUES (?)", (word,))
     db.commit()
     await message.reply(f"Слово '{word}' добавлено в чёрный список!")
