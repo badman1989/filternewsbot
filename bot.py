@@ -1,11 +1,11 @@
 import asyncio
 import logging
 import json
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, FSInputFile
 from telethon import TelegramClient, events
-import os
 from dotenv import load_dotenv
 
 # Загрузка переменных окружения
@@ -13,6 +13,7 @@ load_dotenv()
 API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_ID = int(os.getenv("TELEGRAM_API_ID"))
 API_HASH = os.getenv("TELEGRAM_API_HASH")
+SESSION_STRING = os.getenv("SESSION_STRING")
 TARGET_CHANNEL_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Файл для хранения данных
@@ -31,23 +32,15 @@ def save_data(data):
 data = load_data()
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Инициализация aiogram
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# Инициализация Telethon с готовой сессией
-from telethon.sessions import StringSession
-
-SESSION_STRING = os.getenv("SESSION_STRING")
-
-if not SESSION_STRING:
-    raise ValueError("SESSION_STRING не найден в переменных окружения! Запусти auth.py и добавь его в Railway.")
-
+# Инициализация Telethon
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-
 
 @dp.message(Command("start"))
 async def start(message: Message):
@@ -55,10 +48,11 @@ async def start(message: Message):
 
 @dp.message(Command("add_channel"))
 async def add_channel(message: Message):
-    if not message.text.split():
+    args = message.text.split()
+    if len(args) < 2:
         await message.answer("Используйте команду так: /add_channel @channel")
         return
-    channel = message.text.split()[1]
+    channel = args[1]
     if channel not in data["channels"]:
         data["channels"].append(channel)
         save_data(data)
@@ -68,10 +62,11 @@ async def add_channel(message: Message):
 
 @dp.message(Command("remove_channel"))
 async def remove_channel(message: Message):
-    if not message.text.split():
+    args = message.text.split()
+    if len(args) < 2:
         await message.answer("Используйте команду так: /remove_channel @channel")
         return
-    channel = message.text.split()[1]
+    channel = args[1]
     if channel in data["channels"]:
         data["channels"].remove(channel)
         save_data(data)
@@ -79,9 +74,20 @@ async def remove_channel(message: Message):
     else:
         await message.answer("Этого канала нет в списке.")
 
+@dp.message(Command("list_channels"))
+async def list_channels(message: Message):
+    if data["channels"]:
+        await message.answer("📢 Отслеживаемые каналы:\n" + "\n".join(data["channels"]))
+    else:
+        await message.answer("Список каналов пуст.")
+
 @dp.message(Command("add_word"))
 async def add_word(message: Message):
-    word = message.text.split()[1].lower()
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("Используйте команду так: /add_word слово")
+        return
+    word = args[1].lower()
     if word not in data["blacklist"]:
         data["blacklist"].append(word)
         save_data(data)
@@ -91,7 +97,11 @@ async def add_word(message: Message):
 
 @dp.message(Command("remove_word"))
 async def remove_word(message: Message):
-    word = message.text.split()[1].lower()
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("Используйте команду так: /remove_word слово")
+        return
+    word = args[1].lower()
     if word in data["blacklist"]:
         data["blacklist"].remove(word)
         save_data(data)
@@ -99,30 +109,34 @@ async def remove_word(message: Message):
     else:
         await message.answer("Этого слова нет в черном списке.")
 
+@dp.message(Command("list_words"))
+async def list_words(message: Message):
+    if data["blacklist"]:
+        await message.answer("🚫 Чёрный список:\n" + "\n".join(data["blacklist"]))
+    else:
+        await message.answer("Чёрный список пуст.")
+
 @client.on(events.NewMessage)
 async def handler(event):
-    for channel in data["channels"]:
-        if event.chat and event.chat.username == channel.replace("@", ""):
+    if event.chat and event.chat.username:
+        channel_name = f"@{event.chat.username}"
+        if channel_name in data["channels"]:
             if not any(word in event.raw_text.lower() for word in data["blacklist"]):
-                # Если есть фото
+                caption = f"{event.raw_text}\n\n🔗 Источник: {channel_name}"
                 if event.photo:
-                    await bot.send_photo(TARGET_CHANNEL_ID, event.photo, caption=event.raw_text)
-                # Если есть видео
+                    photo = await event.download_media()
+                    await bot.send_photo(TARGET_CHANNEL_ID, FSInputFile(photo), caption=caption)
                 elif event.video:
-                    await bot.send_video(TARGET_CHANNEL_ID, event.video, caption=event.raw_text)
-                # Если есть гифка (анимация)
-                elif event.gif:
-                    await bot.send_animation(TARGET_CHANNEL_ID, event.gif, caption=event.raw_text)
-                # Если есть документ
+                    video = await event.download_media()
+                    await bot.send_video(TARGET_CHANNEL_ID, FSInputFile(video), caption=caption)
                 elif event.document:
-                    await bot.send_document(TARGET_CHANNEL_ID, event.document, caption=event.raw_text)
-                # Если только текст
+                    document = await event.download_media()
+                    await bot.send_document(TARGET_CHANNEL_ID, FSInputFile(document), caption=caption)
                 else:
-                    await bot.send_message(TARGET_CHANNEL_ID, event.raw_text)
-
+                    await bot.send_message(TARGET_CHANNEL_ID, caption)
 
 async def main():
-    await client.start()  # Используем сохраненную сессию
+    await client.start()
     logger.info("✅ Telethon успешно авторизован через реальный аккаунт!")
     await dp.start_polling(bot)
     await client.run_until_disconnected()
