@@ -4,6 +4,14 @@ import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
 from telethon import TelegramClient, events
+import os
+
+API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+if API_TOKEN is None:
+    raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не загружен. Проверьте переменные окружения!")
+
+print(f"✅ Токен загружен: {API_TOKEN[:10]}...")  # Вывод первых 10 символов
 
 # === BOT CONFIG ===
 import os
