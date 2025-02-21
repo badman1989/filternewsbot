@@ -33,7 +33,7 @@ dp = Dispatcher(storage=MemoryStorage())
 router = dp
 
 # === TELETHON CLIENT ===
-client = TelegramClient("news_bot", API_ID, API_HASH)
+client = TelegramClient("news_bot", API_ID, API_HASH).start(bot_token=API_TOKEN)
 
 # === БАЗА ДАННЫХ ===
 db = sqlite3.connect("news.db")
