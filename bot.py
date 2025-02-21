@@ -13,7 +13,7 @@ load_dotenv()
 # 🛠 Настройки логирования
 logging.basicConfig(level=logging.INFO)
 
-# 🚀 Получаем переменные из Railway (или .env)
+# 🚀 Получаем переменные окружения
 API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_ID = int(os.getenv("TELEGRAM_API_ID"))
 API_HASH = os.getenv("TELEGRAM_API_HASH")
@@ -32,11 +32,15 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-# 📡 Подключение Telethon
+# 📡 Подключение Telethon (без запроса телефона)
 client = TelegramClient("session_name", API_ID, API_HASH)
 
-# 📌 Фильтр слов (чёрный список)
-BLACKLIST = {"запрещенное_слово", "другое_слово"}
+async def start_telethon():
+    """Запуск Telethon-клиента без запроса номера телефона."""
+    await client.start(bot_token=API_TOKEN)
+    if not await client.is_user_authorized():
+        raise ValueError("❌ Ошибка: Не удалось авторизовать Telethon!")
+    print("✅ Telethon успешно авторизован!")
 
 # 📥 Хендлер команды /start
 @router.message(Command("start"))
@@ -45,26 +49,14 @@ async def start_handler(message: Message):
 
 # 📥 Хендлер команды /add_channel
 @router.message(Command("add_channel"))
-async def add_channel_handler(message: Message):
-    text = message.text.split(maxsplit=1)
-    if len(text) < 2:
-        await message.answer("Используйте: /add_channel @channel_username")
-        return
-    channel = text[1]
-    await message.answer(f"Канал {channel} добавлен в список.")
-
-# 🔍 Фильтрация и отправка сообщений
-async def fetch_and_filter_news():
-    async with client:
-        async for message in client.iter_messages(CHAT_ID, limit=20):
-            if not any(word in message.text.lower() for word in BLACKLIST):
-                await bot.send_message(CHAT_ID, message.text)
+async def add_channel(message: Message):
+    await message.answer("Добавление нового канала в список...")
 
 # 🚀 Основная функция
 async def main():
-    async with client:
-        print("🚀 Бот успешно запущен!")
-        await dp.start_polling(bot)
+    await start_telethon()
+    print("🚀 Бот успешно запущен!")
+    await dp.start_polling(bot)
 
 # 🔄 Запуск бота в event loop
 if __name__ == "__main__":
