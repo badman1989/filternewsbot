@@ -8,6 +8,13 @@ import os
 
 API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+print("🔍 Railway Variables:")
+print(os.environ)  # Показывает ВСЕ переменные окружения
+
+import os
+
+API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
 if API_TOKEN is None:
     raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не загружен. Проверьте переменные окружения!")
 
