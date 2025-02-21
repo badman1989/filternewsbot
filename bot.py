@@ -104,7 +104,22 @@ async def handler(event):
     for channel in data["channels"]:
         if event.chat and event.chat.username == channel.replace("@", ""):
             if not any(word in event.raw_text.lower() for word in data["blacklist"]):
-                await bot.send_message(TARGET_CHANNEL_ID, event.raw_text)
+                # Если есть фото
+                if event.photo:
+                    await bot.send_photo(TARGET_CHANNEL_ID, event.photo, caption=event.raw_text)
+                # Если есть видео
+                elif event.video:
+                    await bot.send_video(TARGET_CHANNEL_ID, event.video, caption=event.raw_text)
+                # Если есть гифка (анимация)
+                elif event.gif:
+                    await bot.send_animation(TARGET_CHANNEL_ID, event.gif, caption=event.raw_text)
+                # Если есть документ
+                elif event.document:
+                    await bot.send_document(TARGET_CHANNEL_ID, event.document, caption=event.raw_text)
+                # Если только текст
+                else:
+                    await bot.send_message(TARGET_CHANNEL_ID, event.raw_text)
+
 
 async def main():
     await client.start()  # Используем сохраненную сессию
