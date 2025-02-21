@@ -28,8 +28,11 @@ API_ID = os.getenv("22046638")
 API_HASH = os.getenv("c039255309530e542b97d46f3df4cf1f")
 CHAT_ID = os.getenv("-1002310511779")
 
-if not API_TOKEN or len(API_TOKEN) < 40:
-    raise ValueError("❌ Ошибка: Токен бота слишком короткий или пустой!")
+if not API_TOKEN:
+    raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не загружен!")
+
+print(f"✅ Длина токена: {len(API_TOKEN)} символов")
+print(f"✅ Токен (первые 10 символов): {API_TOKEN[:10]}...")
 
 bot = Bot(token=API_TOKEN)
 
