@@ -39,7 +39,15 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 # Инициализация Telethon с готовой сессией
-client = TelegramClient("session", API_ID, API_HASH)
+from telethon.sessions import StringSession
+
+SESSION_STRING = os.getenv("SESSION_STRING")
+
+if not SESSION_STRING:
+    raise ValueError("SESSION_STRING не найден в переменных окружения! Запусти auth.py и добавь его в Railway.")
+
+client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+
 
 @dp.message(Command("start"))
 async def start(message: Message):
