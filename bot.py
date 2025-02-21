@@ -3,7 +3,6 @@ import logging
 import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
-from aiogram.utils import executor
 from telethon import TelegramClient, events
 
 # === BOT CONFIG ===
@@ -134,7 +133,7 @@ async def show_blacklist(message: Message):
 # === MAIN ===
 async def main():
     await client.start()
-    executor.start_polling(dp, skip_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
