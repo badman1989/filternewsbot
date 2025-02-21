@@ -1,47 +1,37 @@
+import os
 import asyncio
 import logging
 import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message
+from aiogram.enums import ParseMode
 from telethon import TelegramClient, events
-import os
+from dotenv import load_dotenv
 
+# === ЗАГРУЖАЕМ .env (если используем локально) ===
+load_dotenv()
+
+# === ПОЛУЧАЕМ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+API_ID = os.getenv("TELEGRAM_API_ID")
+API_HASH = os.getenv("TELEGRAM_API_HASH")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-print("🔍 Railway Variables:")
-print(os.environ)  # Показывает ВСЕ переменные окружения
-
-import os
-
-API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-if API_TOKEN is None:
-    raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не загружен. Проверьте переменные окружения!")
-
-print(f"✅ Токен загружен: {API_TOKEN[:10]}...")  # Вывод первых 10 символов
-
-# === BOT CONFIG ===
-import os
-
-API_TOKEN = os.getenv("7542300451:AAGuMRnNwBgB3wBojfjAtVN5T4gJIFMWEFc")
-API_ID = os.getenv("22046638")
-API_HASH = os.getenv("c039255309530e542b97d46f3df4cf1f")
-CHAT_ID = os.getenv("-1002310511779")
-
+# === ПРОВЕРЯЕМ КОРРЕКТНОСТЬ ТОКЕНА ===
 if not API_TOKEN:
     raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не загружен!")
 
 print(f"✅ Длина токена: {len(API_TOKEN)} символов")
 print(f"✅ Токен (первые 10 символов): {API_TOKEN[:10]}...")
 
-bot = Bot(token=API_TOKEN)
-
-dp = Dispatcher(bot)
+# === ИНИЦИАЛИЗИРУЕМ БОТА ===
+bot = Bot(token=API_TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher()
 
 # === TELETHON CLIENT ===
 client = TelegramClient("news_bot", API_ID, API_HASH)
 
-# === DATABASE SETUP ===
+# === БАЗА ДАННЫХ ===
 db = sqlite3.connect("news.db")
 cursor = db.cursor()
 cursor.execute("""
@@ -65,13 +55,13 @@ cursor.execute("""
 """)
 db.commit()
 
-# === BLACKLIST FUNCTION ===
+# === ФУНКЦИЯ ПРОВЕРКИ ЧЕРНОГО СПИСКА ===
 def is_blacklisted(text):
     cursor.execute("SELECT word FROM blacklist")
     blacklist_words = [row[0] for row in cursor.fetchall()]
     return any(word.lower() in text.lower() for word in blacklist_words)
 
-# === CHANNEL MANAGEMENT ===
+# === КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ КАНАЛАМИ ===
 @dp.message_handler(commands=['add_channel'])
 async def add_channel(message: Message):
     chat_id = message.get_args().strip()
@@ -81,25 +71,25 @@ async def add_channel(message: Message):
 
     cursor.execute("INSERT OR IGNORE INTO channels (id) VALUES (?)", (int(chat_id),))
     db.commit()
-    await message.reply(f"Канал {chat_id} добавлен в список.")
+    await message.reply(f"✅ Канал {chat_id} добавлен в список.")
 
 @dp.message_handler(commands=['remove_channel'])
 async def remove_channel(message: Message):
     chat_id = message.get_args().strip()
     cursor.execute("DELETE FROM channels WHERE id = ?", (int(chat_id),))
     db.commit()
-    await message.reply(f"Канал {chat_id} удалён из списка.")
+    await message.reply(f"✅ Канал {chat_id} удалён из списка.")
 
 @dp.message_handler(commands=['list_channels'])
 async def list_channels(message: Message):
     cursor.execute("SELECT id FROM channels")
     channels = [row[0] for row in cursor.fetchall()]
     if channels:
-        await message.reply("Мониторинг каналов:\n" + "\n".join(map(str, channels)))
+        await message.reply("📢 Мониторинг каналов:\n" + "\n".join(map(str, channels)))
     else:
-        await message.reply("Список каналов пуст.")
+        await message.reply("❌ Список каналов пуст.")
 
-# === TELETHON EVENT HANDLER ===
+# === ОБРАБОТЧИК СООБЩЕНИЙ ИЗ КАНАЛОВ ===
 cursor.execute("SELECT id FROM channels")
 CHANNELS = [row[0] for row in cursor.fetchall()]
 
@@ -108,23 +98,19 @@ async def news_handler(event):
     if event.is_channel:
         text = event.message.text or ""
         if is_blacklisted(text):
-            return  # Ignore blacklisted content
+            return  # Игнорируем запрещённые слова
         
         cursor.execute("SELECT * FROM news WHERE text = ?", (text,))
         if cursor.fetchone():
-            return  # Ignore duplicates
+            return  # Игнорируем дубликаты
         
         cursor.execute("INSERT INTO news (source, message_id, text) VALUES (?, ?, ?)",
                        (event.chat.title, event.message.id, text))
         db.commit()
         
-        await bot.send_message(CHAT_ID, f"📰 **{event.chat.title}**\n{text}")
+        await bot.send_message(CHAT_ID, f"📰 <b>{event.chat.title}</b>\n{text}")
 
-# === BOT COMMANDS ===
-@dp.message_handler(commands=['start'])
-async def start_command(message: Message):
-    await message.reply("Привет! Я бот для фильтрации новостей. Добавьте каналы и стоп-слова.")
-
+# === КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ЧЕРНЫМ СПИСКОМ ===
 @dp.message_handler(commands=['add_blacklist'])
 async def add_blacklist(message: Message):
     word = message.get_args().strip()
@@ -134,26 +120,27 @@ async def add_blacklist(message: Message):
     
     cursor.execute("INSERT OR IGNORE INTO blacklist (word) VALUES (?)", (word,))
     db.commit()
-    await message.reply(f"Слово '{word}' добавлено в чёрный список!")
+    await message.reply(f"✅ Слово '{word}' добавлено в чёрный список!")
 
 @dp.message_handler(commands=['remove_blacklist'])
 async def remove_blacklist(message: Message):
     word = message.get_args().strip()
     cursor.execute("DELETE FROM blacklist WHERE word = ?", (word,))
     db.commit()
-    await message.reply(f"Слово '{word}' удалено из чёрного списка!")
+    await message.reply(f"✅ Слово '{word}' удалено из чёрного списка!")
 
 @dp.message_handler(commands=['show_blacklist'])
 async def show_blacklist(message: Message):
     cursor.execute("SELECT word FROM blacklist")
     words = [row[0] for row in cursor.fetchall()]
     if words:
-        await message.reply("Чёрный список: " + ", ".join(words))
+        await message.reply("🚫 Чёрный список: " + ", ".join(words))
     else:
-        await message.reply("Чёрный список пуст.")
+        await message.reply("❌ Чёрный список пуст.")
 
-# === MAIN ===
+# === СТАРТ БОТА ===
 async def main():
+    print("🚀 Бот запущен!")
     await client.start()
     await dp.start_polling(bot)
 
