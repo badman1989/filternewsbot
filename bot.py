@@ -8,16 +8,15 @@ from aiogram.enums import ParseMode
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
 
-# === ЗАГРУЖАЕМ .env (если используем локально) ===
+# === ЗАГРУЖАЕМ .env ===
 load_dotenv()
 
-# === ПОЛУЧАЕМ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
+# === ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===
 API_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# === ПРОВЕРЯЕМ КОРРЕКТНОСТЬ ТОКЕНА ===
 if not API_TOKEN:
     raise ValueError("❌ Ошибка: TELEGRAM_BOT_TOKEN не загружен!")
 
@@ -62,32 +61,32 @@ def is_blacklisted(text):
     return any(word.lower() in text.lower() for word in blacklist_words)
 
 # === КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ КАНАЛАМИ ===
-@dp.message_handler(commands=['add_channel'])
+@dp.message(commands=['add_channel'])
 async def add_channel(message: Message):
-    chat_id = message.get_args().strip()
+    chat_id = message.text.split(maxsplit=1)[-1].strip()
     if not chat_id.startswith('-100'):
-        await message.reply("Введите ID канала (начинается с -100).")
+        await message.answer("Введите ID канала (начинается с -100).")
         return
 
     cursor.execute("INSERT OR IGNORE INTO channels (id) VALUES (?)", (int(chat_id),))
     db.commit()
-    await message.reply(f"✅ Канал {chat_id} добавлен в список.")
+    await message.answer(f"✅ Канал {chat_id} добавлен в список.")
 
-@dp.message_handler(commands=['remove_channel'])
+@dp.message(commands=['remove_channel'])
 async def remove_channel(message: Message):
-    chat_id = message.get_args().strip()
+    chat_id = message.text.split(maxsplit=1)[-1].strip()
     cursor.execute("DELETE FROM channels WHERE id = ?", (int(chat_id),))
     db.commit()
-    await message.reply(f"✅ Канал {chat_id} удалён из списка.")
+    await message.answer(f"✅ Канал {chat_id} удалён из списка.")
 
-@dp.message_handler(commands=['list_channels'])
+@dp.message(commands=['list_channels'])
 async def list_channels(message: Message):
     cursor.execute("SELECT id FROM channels")
     channels = [row[0] for row in cursor.fetchall()]
     if channels:
-        await message.reply("📢 Мониторинг каналов:\n" + "\n".join(map(str, channels)))
+        await message.answer("📢 Мониторинг каналов:\n" + "\n".join(map(str, channels)))
     else:
-        await message.reply("❌ Список каналов пуст.")
+        await message.answer("❌ Список каналов пуст.")
 
 # === ОБРАБОТЧИК СООБЩЕНИЙ ИЗ КАНАЛОВ ===
 cursor.execute("SELECT id FROM channels")
@@ -111,32 +110,32 @@ async def news_handler(event):
         await bot.send_message(CHAT_ID, f"📰 <b>{event.chat.title}</b>\n{text}")
 
 # === КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ЧЕРНЫМ СПИСКОМ ===
-@dp.message_handler(commands=['add_blacklist'])
+@dp.message(commands=['add_blacklist'])
 async def add_blacklist(message: Message):
-    word = message.get_args().strip()
+    word = message.text.split(maxsplit=1)[-1].strip()
     if not word:
-        await message.reply("Введите слово для чёрного списка после команды.")
+        await message.answer("Введите слово для чёрного списка после команды.")
         return
     
     cursor.execute("INSERT OR IGNORE INTO blacklist (word) VALUES (?)", (word,))
     db.commit()
-    await message.reply(f"✅ Слово '{word}' добавлено в чёрный список!")
+    await message.answer(f"✅ Слово '{word}' добавлено в чёрный список!")
 
-@dp.message_handler(commands=['remove_blacklist'])
+@dp.message(commands=['remove_blacklist'])
 async def remove_blacklist(message: Message):
-    word = message.get_args().strip()
+    word = message.text.split(maxsplit=1)[-1].strip()
     cursor.execute("DELETE FROM blacklist WHERE word = ?", (word,))
     db.commit()
-    await message.reply(f"✅ Слово '{word}' удалено из чёрного списка!")
+    await message.answer(f"✅ Слово '{word}' удалено из чёрного списка!")
 
-@dp.message_handler(commands=['show_blacklist'])
+@dp.message(commands=['show_blacklist'])
 async def show_blacklist(message: Message):
     cursor.execute("SELECT word FROM blacklist")
     words = [row[0] for row in cursor.fetchall()]
     if words:
-        await message.reply("🚫 Чёрный список: " + ", ".join(words))
+        await message.answer("🚫 Чёрный список: " + ", ".join(words))
     else:
-        await message.reply("❌ Чёрный список пуст.")
+        await message.answer("❌ Чёрный список пуст.")
 
 # === СТАРТ БОТА ===
 async def main():
