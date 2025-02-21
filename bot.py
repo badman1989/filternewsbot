@@ -1,11 +1,11 @@
-import asyncio
-import logging
-import json
 import os
+import json
+import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 from dotenv import load_dotenv
 
 # Загрузка переменных окружения
@@ -16,7 +16,11 @@ API_HASH = os.getenv("TELEGRAM_API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 TARGET_CHANNEL_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Файл для хранения данных
+# Проверяем, есть ли сессия
+if not SESSION_STRING:
+    raise ValueError("❌ SESSION_STRING не найден! Запусти auth.py и добавь его в Railway.")
+
+# Файл хранения данных
 DATA_FILE = "channels_and_blacklist.json"
 
 def load_data():
@@ -32,14 +36,12 @@ def save_data(data):
 data = load_data()
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализация aiogram
+# Инициализация бота и Telethon
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-
-# Инициализация Telethon
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 @dp.message(Command("start"))
@@ -48,11 +50,11 @@ async def start(message: Message):
 
 @dp.message(Command("add_channel"))
 async def add_channel(message: Message):
-    args = message.text.split()
-    if len(args) < 2:
+    parts = message.text.split()
+    if len(parts) < 2:
         await message.answer("Используйте команду так: /add_channel @channel")
         return
-    channel = args[1]
+    channel = parts[1]
     if channel not in data["channels"]:
         data["channels"].append(channel)
         save_data(data)
@@ -62,11 +64,11 @@ async def add_channel(message: Message):
 
 @dp.message(Command("remove_channel"))
 async def remove_channel(message: Message):
-    args = message.text.split()
-    if len(args) < 2:
+    parts = message.text.split()
+    if len(parts) < 2:
         await message.answer("Используйте команду так: /remove_channel @channel")
         return
-    channel = args[1]
+    channel = parts[1]
     if channel in data["channels"]:
         data["channels"].remove(channel)
         save_data(data)
@@ -74,20 +76,13 @@ async def remove_channel(message: Message):
     else:
         await message.answer("Этого канала нет в списке.")
 
-@dp.message(Command("list_channels"))
-async def list_channels(message: Message):
-    if data["channels"]:
-        await message.answer("📢 Отслеживаемые каналы:\n" + "\n".join(data["channels"]))
-    else:
-        await message.answer("Список каналов пуст.")
-
 @dp.message(Command("add_word"))
 async def add_word(message: Message):
-    args = message.text.split()
-    if len(args) < 2:
+    parts = message.text.split()
+    if len(parts) < 2:
         await message.answer("Используйте команду так: /add_word слово")
         return
-    word = args[1].lower()
+    word = parts[1].lower()
     if word not in data["blacklist"]:
         data["blacklist"].append(word)
         save_data(data)
@@ -97,11 +92,11 @@ async def add_word(message: Message):
 
 @dp.message(Command("remove_word"))
 async def remove_word(message: Message):
-    args = message.text.split()
-    if len(args) < 2:
+    parts = message.text.split()
+    if len(parts) < 2:
         await message.answer("Используйте команду так: /remove_word слово")
         return
-    word = args[1].lower()
+    word = parts[1].lower()
     if word in data["blacklist"]:
         data["blacklist"].remove(word)
         save_data(data)
@@ -109,37 +104,33 @@ async def remove_word(message: Message):
     else:
         await message.answer("Этого слова нет в черном списке.")
 
-@dp.message(Command("list_words"))
-async def list_words(message: Message):
-    if data["blacklist"]:
-        await message.answer("🚫 Чёрный список:\n" + "\n".join(data["blacklist"]))
-    else:
-        await message.answer("Чёрный список пуст.")
-
 @client.on(events.NewMessage)
 async def handler(event):
-    if event.chat and event.chat.username:
-        channel_name = f"@{event.chat.username}"
-        if channel_name in data["channels"]:
-            if not any(word in event.raw_text.lower() for word in data["blacklist"]):
-                caption = f"{event.raw_text}\n\n🔗 Источник: {channel_name}"
-                if event.photo:
-                    photo = await event.download_media()
-                    await bot.send_photo(TARGET_CHANNEL_ID, FSInputFile(photo), caption=caption)
-                elif event.video:
-                    video = await event.download_media()
-                    await bot.send_video(TARGET_CHANNEL_ID, FSInputFile(video), caption=caption)
-                elif event.document:
-                    document = await event.download_media()
-                    await bot.send_document(TARGET_CHANNEL_ID, FSInputFile(document), caption=caption)
-                else:
-                    await bot.send_message(TARGET_CHANNEL_ID, caption)
+    for channel in data["channels"]:
+        if event.chat and event.chat.username == channel.replace("@", ""):
+            if any(word in event.raw_text.lower() for word in data["blacklist"]):
+                return  # Пропускаем сообщение, если оно содержит запрещенные слова
+            
+            # Отправка текста + медиафайлы (если есть)
+            caption = f"{event.raw_text}\n\n🔗 Источник: @{event.chat.username}"
+            if event.photo:
+                photo = await event.download_media()
+                await bot.send_photo(TARGET_CHANNEL_ID, types.FSInputFile(photo), caption=caption)
+            elif event.video:
+                video = await event.download_media()
+                await bot.send_video(TARGET_CHANNEL_ID, types.FSInputFile(video), caption=caption)
+            elif event.document:
+                document = await event.download_media()
+                await bot.send_document(TARGET_CHANNEL_ID, types.FSInputFile(document), caption=caption)
+            else:
+                await bot.send_message(TARGET_CHANNEL_ID, caption)
 
 async def main():
-    await client.start()
+    await client.start()  # Запуск Telethon
     logger.info("✅ Telethon успешно авторизован через реальный аккаунт!")
     await dp.start_polling(bot)
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
