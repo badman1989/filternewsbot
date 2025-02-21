@@ -16,7 +16,6 @@ API_HASH = os.getenv("TELEGRAM_API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 TARGET_CHANNEL_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Проверяем, есть ли сессия
 if not SESSION_STRING:
     raise ValueError("❌ SESSION_STRING не найден! Запусти auth.py и добавь его в Railway.")
 
@@ -44,9 +43,19 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
+# aiogram команды
 @dp.message(Command("start"))
 async def start(message: Message):
+    logger.info(f"📩 Команда /start от {message.from_user.username}")
     await message.answer("Привет! Я фильтрую новости по чёрному списку слов.")
+
+@dp.message(Command("list_channels"))
+async def list_channels(message: Message):
+    logger.info(f"📩 Команда /list_channels от {message.from_user.username}")
+    if not data["channels"]:
+        await message.answer("📢 Список каналов пуст.")
+    else:
+        await message.answer("📢 Отслеживаемые каналы:\n" + "\n".join(data["channels"]))
 
 @dp.message(Command("add_channel"))
 async def add_channel(message: Message):
@@ -76,34 +85,7 @@ async def remove_channel(message: Message):
     else:
         await message.answer("Этого канала нет в списке.")
 
-@dp.message(Command("add_word"))
-async def add_word(message: Message):
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer("Используйте команду так: /add_word слово")
-        return
-    word = parts[1].lower()
-    if word not in data["blacklist"]:
-        data["blacklist"].append(word)
-        save_data(data)
-        await message.answer(f"Слово '{word}' добавлено в черный список.")
-    else:
-        await message.answer("Это слово уже в черном списке.")
-
-@dp.message(Command("remove_word"))
-async def remove_word(message: Message):
-    parts = message.text.split()
-    if len(parts) < 2:
-        await message.answer("Используйте команду так: /remove_word слово")
-        return
-    word = parts[1].lower()
-    if word in data["blacklist"]:
-        data["blacklist"].remove(word)
-        save_data(data)
-        await message.answer(f"Слово '{word}' удалено из черного списка.")
-    else:
-        await message.answer("Этого слова нет в черном списке.")
-
+# Telethon обработчик
 @client.on(events.NewMessage)
 async def handler(event):
     for channel in data["channels"]:
@@ -111,8 +93,8 @@ async def handler(event):
             if any(word in event.raw_text.lower() for word in data["blacklist"]):
                 return  # Пропускаем сообщение, если оно содержит запрещенные слова
             
-            # Отправка текста + медиафайлы (если есть)
             caption = f"{event.raw_text}\n\n🔗 Источник: @{event.chat.username}"
+            
             if event.photo:
                 photo = await event.download_media()
                 await bot.send_photo(TARGET_CHANNEL_ID, types.FSInputFile(photo), caption=caption)
@@ -123,10 +105,10 @@ async def handler(event):
                 document = await event.download_media()
                 await bot.send_document(TARGET_CHANNEL_ID, types.FSInputFile(document), caption=caption)
             else:
-                await bot.send_message(TARGET_CHANNEL_ID, caption)
+                await bot.send_message(TARGET_CHANNEL_ID, text=caption)
 
 async def main():
-    await client.start()  # Запуск Telethon
+    await client.start()
     logger.info("✅ Telethon успешно авторизован через реальный аккаунт!")
     await dp.start_polling(bot)
     await client.run_until_disconnected()
